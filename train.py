@@ -183,6 +183,6 @@ if __name__ == '__main__':
             print('About to early stop')
             i += 1
 
-        if i == 12:
+        if i == 40:
             print("Early Stopping")
             break
