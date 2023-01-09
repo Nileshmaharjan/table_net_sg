@@ -34,7 +34,7 @@ model = TableNet(encoder='densenet', use_pretrained_model=True, basemodel_requir
 model = model.to(config.DEVICE)
 
 # load checkpoint
-_, _, _ = load_checkpoint(torch.load("densenet_config_4_model_checkpoint.pth.tar"), model)
+_, _, _ = load_checkpoint(torch.load("densenet_config_batch_size_2_model_checkpoint.pth.tar"), model)
 
 processed_data = pd.read_csv(config.DATAPATH)
 _, test_data = train_test_split(processed_data, test_size=0.2, random_state=config.SEED,

@@ -1,6 +1,10 @@
-runs/
+runs_batch_size_2/
 data/
 images/
 marmot/
 resized_binary/
 resized_dilated/
+runs/
+Tablenet/
+week_38/
+mintae/

@@ -28,7 +28,6 @@ warnings.filterwarnings("ignore")
 
 
 def train_on_epoch(data_loader, model, optimizer, loss, scaler, threshold=0.5):
-    combined_loss = []
     table_loss, table_acc, table_precision, table_recall, table_f1 = [], [], [], [], []
     loop = tqdm(data_loader, leave=True)
 
@@ -70,9 +69,7 @@ def train_on_epoch(data_loader, model, optimizer, loss, scaler, threshold=0.5):
 
 
 def test_on_epoch(data_loader, model, loss, threshold=0.5, device=config.DEVICE):
-    combined_loss = []
     table_loss, table_acc, table_precision, table_recall, table_f1 = [], [], [], [], []
-    col_loss, col_acc, col_precision, col_recall, col_f1 = [], [], [], [], []
 
     model.eval()
     with torch.no_grad():
@@ -116,7 +113,7 @@ if __name__ == '__main__':
     #     dev = "cpu"
 
     seed_all(SEED_VALUE=config.SEED)
-    checkpoint_name = 'densenet_config_4_model_checkpoint.pth.tar'
+    checkpoint_name = 'densenet_config_batch_size_4_model_checkpoint.pth.tar'
     model = TableNet(encoder='densenet', use_pretrained_model=True, basemodel_requires_grad=True)
 
     print("Model Architecture and Trainable Paramerters")
@@ -131,7 +128,7 @@ if __name__ == '__main__':
     )
     loss = TableNetLoss()
     scaler = torch.cuda.amp.GradScaler()
-    train_loader, test_loader = get_data_loaders(data_path=config.DATAPATH)
+    train_loader, test_loader = get_data_loaders(data_path_train=config.DATAPATH_TRAIN,  data_path_test=config.DATAPATH_TEST)
 
     nl = '\n'
 
@@ -183,6 +180,6 @@ if __name__ == '__main__':
             print('About to early stop')
             i += 1
 
-        if i == 40:
+        if i == 25:
             print("Early Stopping")
             break

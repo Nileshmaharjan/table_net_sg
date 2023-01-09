@@ -11,7 +11,9 @@ class TableDecoder(nn.Module):
             in_channels=256,
             out_channels=256,
             kernel_size=kernels[0],
-            stride=strides[0])
+            stride=strides[0],
+
+        )
         self.upsample_1_table = nn.ConvTranspose2d(
             in_channels=256,
             out_channels=128,
@@ -28,12 +30,19 @@ class TableDecoder(nn.Module):
             kernel_size=kernels[3],
             stride=strides[3])
 
+        self.dropout_layer = nn.Sequential(
+            nn.Dropout(0.6)
+        )
+
     def forward(self, x, pool_3_out, pool_4_out):
         x = self.conv_7_table(x)  # [1, 256, 32, 32]
+        x = self.dropout_layer(x)
         out = self.upsample_1_table(x)  # [1, 128, 64, 64]
         out = torch.cat((out, pool_4_out), dim=1)  # [1, 640, 64, 64]
+        out = self.dropout_layer(out)
         out = self.upsample_2_table(out)  # [1, 256, 128, 128]
-        out = torch.cat((out, pool_3_out), dim=1)  # [1, 512, 128, 128]
+        out = torch.cat((out, pool_3_out), dim=1) # [1, 512, 128, 128]
+        out = self.dropout_layer(out)
         out = self.upsample_3_table(out)  # [1, 3, 1024, 1024]
         return out
 

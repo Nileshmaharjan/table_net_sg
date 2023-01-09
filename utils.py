@@ -15,10 +15,15 @@ from albumentations.pytorch import ToTensorV2
 TRANSFORM = A.Compose([
     # ToTensor --> Normalize(mean, std)
     A.Normalize(
-        mean=[0.485, 0.456, 0.406],
-        std=[0.229, 0.224, 0.225],
+        mean=[0.485],
+        std=[0.229],
         max_pixel_value=255,
     ),
+    # A.Normalize(
+    #     mean=[0.485, 0.456, 0.406],
+    #     std=[0.229, 0.224, 0.225],
+    #     max_pixel_value=255,
+    # ),
     ToTensorV2()
 ])
 
@@ -33,9 +38,12 @@ def seed_all(SEED_VALUE=config.SEED):
     torch.backends.cudnn.benchmark = True
 
 
-def get_data_loaders(data_path=config.DATAPATH):
-    df = pd.read_csv(data_path)
-    train_data, test_data = train_test_split(df, test_size=0.2, random_state=config.SEED, stratify=df.hasTable)
+def get_data_loaders(data_path_train=config.DATAPATH_TRAIN, data_path_test=config.DATAPATH_TEST):
+    df_train = pd.read_csv(data_path_train)
+    df_test = pd.read_csv(data_path_test)
+    # train_data, test_data = train_test_split(df_train, test_size=0.2, random_state=config.SEED, stratify=df_train.hasTable)
+    train_data = df_train
+    test_data = df_test
 
     train_dataset = ImageFolder(train_data, isTrain=True, transform=None)
     test_dataset = ImageFolder(test_data, isTrain=False, transform=None)
@@ -111,6 +119,7 @@ def display_metrics(epoch, tr_metrics, te_metrics):
     # Col Precision -- Train: {tr_metrics['col_precision']:.3f} Test: {te_metrics['col_precision']:.3f}{nl}\
     # Col Recall -- Train: {tr_metrics['col_recall']:.3f} Test: {te_metrics['col_recall']:.3f}{nl}\
 
+
 def compute_metrics(ground_truth, prediction, threshold=0.5):
     # https://stackoverflow.com/a/56649983
 
@@ -137,25 +146,56 @@ def compute_metrics(ground_truth, prediction, threshold=0.5):
     return metrics
 
 
-def display(img, table, column, title='Original'):
+def display(img, table, predicted_mask, title='Original'):
     f, ax = plt.subplots(1, 3, figsize=(15, 8))
     ax[0].imshow(img)
     ax[0].set_title(f'{title} Image')
     ax[1].imshow(table)
     ax[1].set_title(f'{title} Table Mask')
-    ax[2].imshow(column)
-    ax[2].set_title(f'{title} Column Mask')
+    ax[2].imshow(predicted_mask)
+    ax[2].set_title(f'Predicted Table Mask')
+    plt.show()
+
+
+def display_predicted_and_fixed(img, predicted_mask, fixed_mask):
+    f, ax = plt.subplots(1, 3, figsize=(15, 8))
+    ax[0].imshow(img)
+    ax[0].set_title(f'Original Image')
+    ax[1].imshow(predicted_mask)
+    ax[1].set_title(f'Predicted Table Mask')
+    ax[2].imshow(fixed_mask)
+    ax[2].set_title(f'Fixed Table Mask')
+    plt.show()
+
+
+def display_everything_1(org_img, predicted_mask):
+    f, ax = plt.subplots(1, 2, figsize=(15, 8))
+    ax[0].imshow(org_img)
+    ax[0].set_title(f'Original Image')
+    ax[1].imshow(predicted_mask)
+    ax[1].set_title(f'Predicted Table Mask')
+    plt.show()
+
+
+def display_everything_2(fixed_mask, fixed_mask_original_image):
+    f, ax = plt.subplots(1, 2, figsize=(15, 8))
+    ax[0].imshow(fixed_mask)
+    ax[0].set_title(f'Predicted mask')
+    ax[1].imshow(fixed_mask_original_image)
+    ax[1].set_title(f'Predicted mask original')
     plt.show()
 
 
 def get_TableMasks(test_img, model, transform=TRANSFORM, device=config.DEVICE):
-    image = transform(image=test_img)["image"]
+    image_stack = np.stack([test_img, test_img, test_img], axis=2)
+    image = transform(image=image_stack)["image"]
     # get predictions
     model.eval()
     with torch.no_grad():
         image = image.to(device).unsqueeze(0)
         # with torch.cuda.amp.autocast():
-        table_out, column_out = model(image)
+        # table_out, column_out = model(image)
+        table_out = model(image)
         table_out = torch.sigmoid(table_out)
         # column_out = torch.sigmoid(column_out)
 
@@ -163,8 +203,10 @@ def get_TableMasks(test_img, model, transform=TRANSFORM, device=config.DEVICE):
 
     table_out = (table_out.cpu().detach().numpy().squeeze(0).transpose(1, 2, 0) > 0.5).astype(int)
     # column_out = (column_out.cpu().detach().numpy().squeeze(0).transpose(1, 2, 0) > 0.5).astype(int)
+    return table_out
 
-    return table_out, column_out
+
+#     return table_out, column_out
 
 
 def is_contour_bad(c):
@@ -177,13 +219,27 @@ def is_contour_bad(c):
     return not len(approx) == 4
 
 
-def fixMasks(image, table_mask, column_mask):
+def convert_to_pascal_voc_format(bbox):
+    x = bbox[0]
+    y = bbox[1]
+    w = bbox[2]
+    h = bbox[3]
 
+    xmin = x
+    ymin = y
+    xmax = x + w
+    ymax = y + h
+    new_bbox = [xmin, ymin, xmax, ymax]
+
+    return new_bbox
+
+
+def fixMasks(image, table_mask):
     table_mask = table_mask.reshape(1024, 1024).astype(np.uint8)
-    column_mask = column_mask.reshape(1024, 1024).astype(np.uint8)
+    # column_mask = column_mask.reshape(1024, 1024).astype(np.uint8)
 
     # get contours of the mask to get number of tables
-    contours, table_heirarchy = cv2.findContours(table_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    contours, table_heirarchy = cv2.findContours(table_mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
 
     table_contours = []
 
@@ -196,10 +252,6 @@ def fixMasks(image, table_mask, column_mask):
     if len(table_contours) == 0:
         return None
 
-    # ref : https://docs.opencv.org/4.5.2/da/d0c/tutorial_bounding_rects_circles.html
-    # get bounding box for the contour
-    # retrieving bounding boxes from the contour
-
     table_boundRect = [None] * len(table_contours)
     for i, c in enumerate(table_contours):
         polygon = cv2.approxPolyDP(c, 3, True)
@@ -208,28 +260,8 @@ def fixMasks(image, table_mask, column_mask):
     # table bounding Box
     table_boundRect.sort()
 
-    # col_boundRects = []
-    # for x, y, w, h in table_boundRect:
-    #
-    #     col_mask_crop = column_mask[y:y + h, x:x + w]
-    #
-    #     # get contours of the mask to get number of tables
-    #     contours, col_heirarchy = cv2.findContours(col_mask_crop, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    #     # get bounding box for the contour
-    #     boundRect = [None] * len(contours)
-    #     for i, c in enumerate(contours):
-    #         polygon = cv2.approxPolyDP(c, 3, True)
-    #         boundRect[i] = cv2.boundingRect(polygon)
-    #
-    #         # adjusting columns as per table coordinates
-    #         boundRect[i] = (boundRect[i][0] + x,
-    #                         boundRect[i][1] + y,
-    #                         boundRect[i][2],
-    #                         boundRect[i][3])
-    #
-    #     col_boundRects.append(boundRect)
-
-    image = image[..., 0].reshape(1024, 1024).astype(np.uint8)
+    # image = image[..., 0].reshape(1024, 1024).astype(np.uint8)
+    image = image[..., 0].astype(np.uint8)
 
     # draw bounding boxes
     color = (0, 255, 0)
@@ -238,5 +270,9 @@ def fixMasks(image, table_mask, column_mask):
     for x, y, w, h in table_boundRect:
         image = cv2.rectangle(image, (x, y), (x + w, y + h), color, thickness)
 
-    # return image, table_boundRect, col_boundRects
-    return image, table_boundRect
+    corrected_bbox = []
+    for bbox in table_boundRect:
+        a = convert_to_pascal_voc_format(bbox)
+        corrected_bbox.append(a)
+
+    return image, corrected_bbox
